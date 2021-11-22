@@ -83,6 +83,13 @@ def main():
     pre_cx = 500
     pre_cy = 500
     init_flg = False
+    window_w = 640 - 17
+    window_h = 480
+    hover_frames = 10
+    rect_left_point = [0, int(window_h/2-50), 100, int(window_h/2+50)]
+    rect_right_point = [window_w-100, int(window_h/2-50), window_w, int(window_h/2+50)]
+    left_rect_center_point = [int((rect_left_point[0]+rect_left_point[2])/2), int((rect_left_point[1]+rect_left_point[3])/2)]
+    right_rect_center_point = [int((rect_right_point[0]+rect_right_point[2])/2), int((rect_right_point[1]+rect_right_point[3])/2)]
     while True:
         # カメラキャプチャ #####################################################
         ret, image = cap.read()
@@ -95,6 +102,9 @@ def main():
         image = cv.cvtColor(image, cv.COLOR_BGR2RGB)
         results = hands.process(image)
         # 描画 ################################################################
+        # 手を置くポイントの矩形
+        cv.rectangle(debug_image, (rect_left_point[0], rect_left_point[1]), (rect_left_point[2], rect_left_point[3]), (0, 255, 0), 2)
+        cv.rectangle(debug_image, (rect_right_point[0], rect_right_point[1]), (rect_right_point[2], rect_right_point[3]), (0, 255, 0), 2)
         if results.multi_hand_landmarks is not None: # 手が認識されたとき
             for hand_landmarks, handedness in zip(results.multi_hand_landmarks,
                                                   results.multi_handedness):
@@ -107,33 +117,62 @@ def main():
                 debug_image = draw_landmarks(debug_image, cx, cy,
                                              hand_landmarks, handedness)
                 debug_image = draw_bounding_rect(use_brect, debug_image, brect)
-
-                # print("***cx: ", cx, "***cy: ", cy)
-                if cx != pre_cx and abs(cy - pre_cy) / abs(cx - pre_cx) < horizontal_threshold: # 水平方向に動いたとき
-                    if 0 < cx - pre_cx: # 右
-                        print("migi")
-                        right_count += 1 
-                        if gesture_threshold < right_count and not right_flg:
-                            sio_client.emit('moved', {"action":"prev"}) 
-                            right_flg = True
-                            print("                  >>>>>>>>>>>>>>>>>>>>>>>")
-                            right_count = 0
-                    else: # 左
-                        print("hidari")
-                        left_count += 1 
-                        if gesture_threshold < left_count and not left_flg:
-                            sio_client.emit('moved', {"action":"next"}) 
-                            left_flg = True
-                            print("<<<<<<<<<<<<<<<<<<<<<<")
-                            left_count = 0
-                else: # 水平方向に動いていないとき
-                    right_flg = False
-                    right_count = 0
+                # 左の矩形に触れた場合
+                if rect_left_point[0] <= cx and cx <= rect_left_point[2] and rect_left_point[1] <= cy and cy <= rect_left_point[3]:
+                    cv.rectangle(debug_image, (rect_left_point[0], rect_left_point[1]), (rect_left_point[2], rect_left_point[3]), (0, 0, 255), 2)
+                    diff = int((rect_left_point[2]-rect_left_point[0])/2*min(left_count, hover_frames)/hover_frames)
+                    cv.rectangle(debug_image, (left_rect_center_point[0]-diff, left_rect_center_point[1]-diff),  (left_rect_center_point[0]+diff, left_rect_center_point[1]+diff), (0, 0, 255), -1)
+                    left_count += 1
+  
+                    if hover_frames < left_count and not left_flg:
+                        sio_client.emit('moved', {"action":"prev"}) 
+                        left_flg = True
+                        print("<<<<<<<<<<<<<<<<<<<<<<")
+                # 右の矩形に触れた場合
+                elif rect_right_point[0] <= cx and cx <= rect_right_point[2] and rect_right_point[1] <= cy and cy <= rect_right_point[3]:
+                    cv.rectangle(debug_image, (rect_right_point[0], rect_right_point[1]), (rect_right_point[2], rect_right_point[3]), (0, 0, 255), 2)
+                    diff = int((rect_left_point[3]-rect_left_point[1])/2*min(right_count, hover_frames)/hover_frames)
+                    cv.rectangle(debug_image, (right_rect_center_point[0]-diff, right_rect_center_point[1]-diff),  (right_rect_center_point[0]+diff, right_rect_center_point[1]+diff), (0, 0, 255), -1)
+                    right_count += 1 
+                    if hover_frames < right_count and not right_flg:
+                        sio_client.emit('moved', {"action":"next"}) 
+                        right_flg = True
+                        print("                  >>>>>>>>>>>>>>>>>>>>>>>")
+                else:
+                    cv.rectangle(debug_image, (rect_left_point[0], rect_left_point[1]), (rect_left_point[2], rect_left_point[3]), (0, 255, 0), 2)
                     left_flg = False
                     left_count = 0
+                    cv.rectangle(debug_image, (rect_right_point[0], rect_right_point[1]), (rect_right_point[2], rect_right_point[3]), (0, 255, 0), 2)
+                    right_flg = False
+                    right_count = 0
+                
+                
+                    
 
-                pre_cx = cx
-                pre_cy = cy
+                # print("***cx: ", cx, "***cy: ", cy)
+                # if cx != pre_cx and abs(cy - pre_cy) / abs(cx - pre_cx) < horizontal_threshold: # 水平方向に動いたとき
+                #     if 0 < cx - pre_cx: # 右
+                #         right_count += 1 
+                #         if gesture_threshold < right_count and not right_flg:
+                #             sio_client.emit('moved', {"action":"prev"}) 
+                #             right_flg = True
+                #             print("                  >>>>>>>>>>>>>>>>>>>>>>>")
+                #             right_count = 0
+                #     else: # 左
+                #         left_count += 1 
+                #         if gesture_threshold < left_count and not left_flg:
+                #             sio_client.emit('moved', {"action":"next"}) 
+                #             left_flg = True
+                #             print("<<<<<<<<<<<<<<<<<<<<<<")
+                #             left_count = 0
+                # else: # 水平方向に動いていないとき
+                #     right_flg = False
+                #     right_count = 0
+                #     left_flg = False
+                #     left_count = 0
+
+                # pre_cx = cx
+                # pre_cy = cy
         else: # 手が認識されていないとき
             right_flg = False
             left_flg = False
@@ -153,7 +192,8 @@ def main():
             init_flg = True
 
         (x, y, w, h) = cv.getWindowImageRect('MediaPipe Hand Demo')
-        print(win32gui.GetActiveWindow())
+        # print(win32gui.GetActiveWindow())
+        # win32gui.SetWindowPos(hwnd, win32con.HWND_TOPMOST, 0, 0, w, h, win32con.SWP_NOACTIVATE)
         win32gui.SetWindowPos(hwnd, win32con.HWND_TOPMOST, 0, 2045, w, h, win32con.SWP_NOACTIVATE)
 
     cap.release()
